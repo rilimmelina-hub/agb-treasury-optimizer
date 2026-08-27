@@ -968,7 +968,7 @@ AGENTS = {"BTA": "Sofia Derardja", "OAT": "Sofia Derardja", "SSI": "Sofia Derard
 DEFAULT_COURBE = {"1A": 4.65, "2A": 5.05, "3A": 5.15, "5A": 5.25, "7A": 6.60, "10A": 6.80}
 TENORS_ANS = {"1A": 1.0, "2A": 2.0, "3A": 3.0, "5A": 5.0, "7A": 7.0, "10A": 10.0}
 
-with st.sidebar.expander("Courbe de taux", expanded=True):
+with st.sidebar.expander("Courbe de taux", expanded=False):
     st.caption("Modifiez les taux directement. Sert a interpoler le rendement par duree.")
     _courbe_kw = dict(step=0.01, format="%0.2f")
     courbe_taux = {}
@@ -1022,7 +1022,7 @@ if 'mm_operations' not in st.session_state:
     if 'solde_ouverture' not in st.session_state:
         st.session_state['solde_ouverture'] = _solde_disque
 
-with st.sidebar.expander("Tresorerie", expanded=False):
+with st.sidebar.expander("Tresorerie", expanded=True):
     st.markdown("**Solde d'ouverture**")
     solde_ouverture = st.number_input("Solde d'ouverture (DA)", value=0.0, min_value=0.0, step=1_000_000.0,
                                        format="%0.0f", key="solde_ouverture")
