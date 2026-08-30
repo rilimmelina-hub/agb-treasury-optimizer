@@ -965,22 +965,32 @@ with st.sidebar.expander("Gestion ALM", expanded=False):
 AGENTS = {"BTA": "Sofia Derardja", "OAT": "Sofia Derardja", "SSI": "Sofia Derardja", "BTC": "Sofia Derardja"}
 
 # --- Courbe de taux manuelle dans le sidebar ---
-DEFAULT_COURBE = {"1A": 4.65, "2A": 5.05, "3A": 5.15, "5A": 5.25, "7A": 6.60, "10A": 6.80}
-TENORS_ANS = {"1A": 1.0, "2A": 2.0, "3A": 3.0, "5A": 5.0, "7A": 7.0, "10A": 10.0}
+# Valeurs par defaut alignees sur la courbe du MARCHE SECONDAIRE (source : releve AGB, juillet 2026)
+# — c'est cette courbe qui sert de reference pour les taux planchers/plafonds d'execution, pas le
+# marche primaire (adjudications).
+DEFAULT_COURBE = {"3M": 3.716, "6M": 4.273, "1A": 4.728, "2A": 5.133, "3A": 5.136,
+                   "5A": 5.917, "7A": 6.594, "10A": 6.814, "15A": 6.950}
+TENORS_ANS = {"3M": 0.25, "6M": 0.5, "1A": 1.0, "2A": 2.0, "3A": 3.0, "5A": 5.0,
+              "7A": 7.0, "10A": 10.0, "15A": 15.0}
 
-with st.sidebar.expander("Courbe de taux", expanded=False):
-    st.caption("Modifiez les taux directement. Sert a interpoler le rendement par duree.")
+with st.sidebar.expander("Courbe de taux (marche secondaire)", expanded=False):
+    st.caption("Modifiez les taux directement. Sert a interpoler le rendement par duree. "
+               "Valeurs par defaut = courbe du marche secondaire (pas le marche primaire).")
     _courbe_kw = dict(step=0.01, format="%0.2f")
     courbe_taux = {}
-    _c1, _c2 = st.columns(2)
+    _c1, _c2, _c3 = st.columns(3)
     with _c1:
+        courbe_taux["3M"] = st.number_input("3 mois (%)", value=DEFAULT_COURBE["3M"], **_courbe_kw) / 100
+        courbe_taux["6M"] = st.number_input("6 mois (%)", value=DEFAULT_COURBE["6M"], **_courbe_kw) / 100
         courbe_taux["1A"] = st.number_input("1 an (%)", value=DEFAULT_COURBE["1A"], **_courbe_kw) / 100
+    with _c2:
         courbe_taux["2A"] = st.number_input("2 ans (%)", value=DEFAULT_COURBE["2A"], **_courbe_kw) / 100
         courbe_taux["3A"] = st.number_input("3 ans (%)", value=DEFAULT_COURBE["3A"], **_courbe_kw) / 100
-    with _c2:
         courbe_taux["5A"] = st.number_input("5 ans (%)", value=DEFAULT_COURBE["5A"], **_courbe_kw) / 100
+    with _c3:
         courbe_taux["7A"] = st.number_input("7 ans (%)", value=DEFAULT_COURBE["7A"], **_courbe_kw) / 100
         courbe_taux["10A"] = st.number_input("10 ans (%)", value=DEFAULT_COURBE["10A"], **_courbe_kw) / 100
+        courbe_taux["15A"] = st.number_input("15 ans (%)", value=DEFAULT_COURBE["15A"], **_courbe_kw) / 100
     _courbe_tenors = np.array([TENORS_ANS[k] for k in courbe_taux])
     _courbe_valeurs = np.array([courbe_taux[k] for k in courbe_taux])
     courbe_manuelle = (_courbe_tenors, _courbe_valeurs)
