@@ -1376,10 +1376,13 @@ if st.session_state.data is not None:
     with tab4:
         st.markdown("## Plan d'execution")
         st.markdown(f'<div style="color:#5B6472; margin-top:-10px; margin-bottom:22px;">Plan d\'execution detaille : quotidien, mensuel et annuel — rythme maximal 1 operation/jour ouvre (5/semaine)</div>', unsafe_allow_html=True)
-        st.caption("Colonne 'Taux_limite' : a l'ACHAT, rendement minimum a negocier pour ne pas faire "
-                   "baisser le rendement cible du portefeuille sous l'objectif ; a la VENTE, rendement "
-                   "maximum de cession pour ne pas faire baisser le P&L cible (moins-value estimee via la "
-                   "duration du titre). Case vide = titre proche de l'echeance, cession sans contrainte utile.")
+        st.caption("Colonne 'Taux_limite' : a l'ACHAT, rendement minimum a negocier — le plus eleve entre "
+                   "ce qu'exige le rendement cible du portefeuille et le taux de la courbe des taux pour la "
+                   "maturite residuelle du titre (on n'achete jamais moins cher que le marche) ; a la VENTE, "
+                   "rendement maximum de cession pour ne pas faire baisser le P&L cible (moins-value estimee "
+                   "via la duration du titre — case vide si titre proche de l'echeance, sans contrainte utile). "
+                   "Colonne 'Taux_courbe_max' (achats uniquement) : plafond indicatif de la zone cible, +12,5% "
+                   "(milieu de la fourchette +10 a 15%) au-dessus du taux de la courbe.")
 
         # Arrondi d'affichage des montants en DA a la dizaine de millions la plus proche (les valeurs
         # exactes restent utilisees pour le budget/QP — seul l'affichage est arrondi).
@@ -1393,7 +1396,10 @@ if st.session_state.data is not None:
         # cible du portefeuille. Le coussin (ecart entre rendement cible actuel et objectif) est
         # reparti au prorata du volume total des operations a executer.
         # - ACHAT : taux plancher = rendement minimum a obtenir (sinon la moyenne ponderee du
-        #   portefeuille cible baisse sous l'objectif).
+        #   portefeuille cible baisse sous l'objectif), releve si besoin au taux de la courbe des
+        #   taux pour la maturite residuelle du titre (on n'achete jamais moins cher que le marche
+        #   pour cette duree). Le plafond indicatif (Taux_courbe_max) est ce taux de courbe majore
+        #   de 10 a 15% (on retient le milieu, 12,5%, comme repere central de la fourchette).
         # - VENTE : taux plafond = rendement maximum de cession (au-dela, la moins-value realisee,
         #   approximee par duration x ecart de taux, entame le coussin de P&L) ; atténué par la
         #   duration du titre (impact prix ~ duration x ecart de taux) — pas de contrainte utile
@@ -1403,7 +1409,9 @@ if st.session_state.data is not None:
         _coussin_DA = _coussin_taux * d["BUDGET"]
         _volume_total_ops = float(pd.concat([ventes["Mouvement_DA"].abs(), achats["Mouvement_DA"].abs()]).sum())
         _ajustement_taux = (_coussin_DA / _volume_total_ops) if _volume_total_ops > 1e-6 else 0.0
-        achats["Taux_limite"] = achats["Rendement_net"] - _ajustement_taux
+        achats["Taux_courbe_min"] = achats["Delai_annees"].apply(lambda a: _rendement_depuis_courbe(a, courbe_manuelle))
+        achats["Taux_courbe_max"] = achats["Taux_courbe_min"] * 1.125
+        achats["Taux_limite"] = np.maximum(achats["Rendement_net"] - _ajustement_taux, achats["Taux_courbe_min"])
         _duree_min = 0.05
         ventes["Taux_limite"] = ventes["Rendement_net"] + np.where(
             ventes["Duration_mod"] > _duree_min, _ajustement_taux / ventes["Duration_mod"].clip(lower=_duree_min), np.nan)
@@ -1451,6 +1459,7 @@ if st.session_state.data is not None:
         for _, row in achats.iterrows():
             achats_restants.append({"Sens": "ACHAT", "ID": row["ID"], "Type": row["Type"], "Contrepartie": row["Contrepartie"],
                                     "Echeance": row["Echeance"], "Rendement_net": row["Rendement_net"], "Taux_limite": row["Taux_limite"],
+                                    "Taux_courbe_max": row["Taux_courbe_max"],
                                     "Montant (DA)": row["Mouvement_DA"], "Agent": AGENTS.get(row["Type"].split()[0], ""),
                                     "_abs": abs(row["Mouvement_DA"])})
         ventes_restantes.sort(key=lambda o: o["_abs"], reverse=True)
@@ -1514,12 +1523,16 @@ if st.session_state.data is not None:
                 pq2.metric("Objectif journalier (P&L)", f"{objectif_journalier_DA/1e6:,.0f} M DA")
                 ligne_jour = {k: v for k, v in op_du_jour.items() if k not in ("_abs", "Date")}
                 ligne_jour["Montant (DA)"] = _arrondi_10m(ligne_jour["Montant (DA)"])
-                st.dataframe(pd.DataFrame([ligne_jour]).style.format({"Rendement_net": "{:.2%}", "Taux_limite": "{:.2%}", "Montant (DA)": "{:,.0f} DA"}, na_rep=""),
+                st.dataframe(pd.DataFrame([ligne_jour]).style.format({"Rendement_net": "{:.2%}", "Taux_limite": "{:.2%}",
+                                                                       "Taux_courbe_max": "{:.2%}", "Montant (DA)": "{:,.0f} DA"}, na_rep=""),
                             use_container_width=True, height=76)
                 _lbl_taux = "plancher a l'achat" if op_du_jour["Sens"] == "ACHAT" else "plafond a la vente"
                 _val_taux = ligne_jour.get("Taux_limite")
                 if _val_taux is not None and not (isinstance(_val_taux, float) and np.isnan(_val_taux)):
                     st.caption(f"Taux {_lbl_taux} pour tenir le rendement/P&L cible : {_val_taux:.2%}")
+                _val_courbe_max = ligne_jour.get("Taux_courbe_max")
+                if op_du_jour["Sens"] == "ACHAT" and _val_courbe_max is not None and not (isinstance(_val_courbe_max, float) and np.isnan(_val_courbe_max)):
+                    st.caption(f"Zone cible vs courbe des taux (maturite residuelle) : {_val_taux:.2%} a {_val_courbe_max:.2%} (+10 a 15%)")
             else:
                 if DATE_EVAL.dayofweek in (4, 5):
                     st.markdown(badge("Jour non ouvre — aucune operation programmee", "ok"), unsafe_allow_html=True)
@@ -1565,7 +1578,8 @@ if st.session_state.data is not None:
                 _semaine_detail(op_s["Date"])["titres"].append({
                     "Date": op_s["Date"], "Sens": op_s["Sens"], "ID": op_s["ID"], "Type": op_s["Type"],
                     "Contrepartie": op_s["Contrepartie"], "Montant (DA)": op_s["Montant (DA)"],
-                    "Taux_limite": op_s["Taux_limite"], "Agent": op_s["Agent"]})
+                    "Taux_limite": op_s["Taux_limite"], "Taux_courbe_max": op_s.get("Taux_courbe_max"),
+                    "Agent": op_s["Agent"]})
 
             for opmm in mm_ops_liq:
                 if DATE_EVAL <= opmm["Date valeur"] <= fin_annee:
@@ -1622,7 +1636,7 @@ if st.session_state.data is not None:
                     df_t = pd.DataFrame(detail["titres"]).sort_values("Date")
                     df_t["Date"] = df_t["Date"].dt.strftime("%d/%m/%Y")
                     df_t["Montant (DA)"] = df_t["Montant (DA)"].apply(_arrondi_10m)
-                    st.dataframe(df_t.style.format({"Montant (DA)": "{:,.0f} DA", "Taux_limite": "{:.2%}"}, na_rep=""), use_container_width=True,
+                    st.dataframe(df_t.style.format({"Montant (DA)": "{:,.0f} DA", "Taux_limite": "{:.2%}", "Taux_courbe_max": "{:.2%}"}, na_rep=""), use_container_width=True,
                                 hide_index=True, height=min(38 * (len(df_t) + 1) + 3, 300))
 
                 if detail["mm"]:
@@ -1667,8 +1681,8 @@ if st.session_state.data is not None:
                 df_plan_aff = df_plan.copy()
                 df_plan_aff["Date"] = df_plan_aff["Date"].dt.strftime("%d/%m/%Y")
                 df_plan_aff["Montant (DA)"] = df_plan_aff["Montant (DA)"].apply(_arrondi_10m)
-                st.dataframe(df_plan_aff[["Date", "Mois", "Sens", "ID", "Type", "Contrepartie", "Montant (DA)", "Taux_limite", "Agent"]]
-                             .style.format({"Montant (DA)": "{:,.0f} DA", "Taux_limite": "{:.2%}"}, na_rep=""),
+                st.dataframe(df_plan_aff[["Date", "Mois", "Sens", "ID", "Type", "Contrepartie", "Montant (DA)", "Taux_limite", "Taux_courbe_max", "Agent"]]
+                             .style.format({"Montant (DA)": "{:,.0f} DA", "Taux_limite": "{:.2%}", "Taux_courbe_max": "{:.2%}"}, na_rep=""),
                             use_container_width=True, height=min(38 * (len(df_plan_aff) + 1) + 3, 500))
             else:
                 st.caption("Aucune operation planifiable.")
