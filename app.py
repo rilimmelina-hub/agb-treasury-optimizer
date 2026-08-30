@@ -1389,7 +1389,7 @@ if st.session_state.data is not None:
         st.caption("Intervalle de taux propose pour chaque operation. A l'ACHAT : Taux_min = le plus eleve "
                    "entre ce qu'exige le rendement cible du portefeuille et le taux de la courbe des taux pour "
                    "la maturite residuelle (jamais moins cher que le marche) ; Meilleur_taux = ce taux de "
-                   "courbe +15%. A la VENTE : Taux_min = le taux de la courbe pour cette maturite (meilleur "
+                   "courbe +1%. A la VENTE : Taux_min = le taux de la courbe pour cette maturite (meilleur "
                    "prix raisonnable a esperer) ; Taux_max = rendement maximum de cession pour ne pas faire "
                    "baisser le P&L cible (moins-value estimee via la duration — case vide si titre proche de "
                    "l'echeance, sans contrainte utile).")
@@ -1407,7 +1407,7 @@ if st.session_state.data is not None:
         # objectif) est reparti au prorata du volume total des operations a executer.
         # - ACHAT : Taux_min = plancher = le plus eleve entre ce qu'exige le rendement cible et le
         #   taux de la courbe des taux pour la maturite residuelle (jamais moins cher que le marche) ;
-        #   Meilleur_taux = ce taux de courbe + 15%.
+        #   Meilleur_taux = ce taux de courbe + 1%.
         # - VENTE : Taux_min = le taux de la courbe pour cette maturite (meilleur prix raisonnable a
         #   esperer) ; Taux_max = plafond = rendement maximum de cession (au-dela, la moins-value
         #   realisee, approximee par duration x ecart de taux, entame le coussin de P&L) — pas de
@@ -1422,7 +1422,7 @@ if st.session_state.data is not None:
         # np.maximum avec Taux_min : si le coussin P&L pousse le plancher au-dela de +15% (portefeuille
         # tres loin de l'objectif), Meilleur_taux suit pour ne jamais afficher un intervalle invalide
         # (min > max) — le plancher reste prioritaire dans tous les cas.
-        achats["Meilleur_taux"] = np.maximum(achats["Taux_courbe"] * 1.15, achats["Taux_min"])
+        achats["Meilleur_taux"] = np.maximum(achats["Taux_courbe"] * 1.01, achats["Taux_min"])
         _duree_min = 0.05
         ventes["Taux_courbe"] = ventes["Delai_annees"].apply(lambda a: _rendement_depuis_courbe(a, courbe_manuelle))
         ventes["Taux_min"] = ventes["Taux_courbe"]
