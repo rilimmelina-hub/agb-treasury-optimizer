@@ -1376,13 +1376,13 @@ if st.session_state.data is not None:
     with tab4:
         st.markdown("## Plan d'execution")
         st.markdown(f'<div style="color:#5B6472; margin-top:-10px; margin-bottom:22px;">Plan d\'execution detaille : quotidien, mensuel et annuel — rythme maximal 1 operation/jour ouvre (5/semaine)</div>', unsafe_allow_html=True)
-        st.caption("Intervalle Taux_min / Taux_max propose pour chaque operation. A l'ACHAT : Taux_min = le "
-                   "plus eleve entre ce qu'exige le rendement cible du portefeuille et le taux de la courbe "
-                   "des taux pour la maturite residuelle (jamais moins cher que le marche) ; Taux_max = ce taux "
-                   "de courbe +10%, et Taux_max_15 = +15% (borne haute de la fourchette demandee). A la VENTE : "
-                   "Taux_min = le taux de la courbe pour cette maturite (meilleur prix raisonnable a esperer) ; "
-                   "Taux_max = rendement maximum de cession pour ne pas faire baisser le P&L cible (moins-value "
-                   "estimee via la duration — case vide si titre proche de l'echeance, sans contrainte utile).")
+        st.caption("Intervalle de taux propose pour chaque operation. A l'ACHAT : Taux_min = le plus eleve "
+                   "entre ce qu'exige le rendement cible du portefeuille et le taux de la courbe des taux pour "
+                   "la maturite residuelle (jamais moins cher que le marche) ; Meilleur_taux = ce taux de "
+                   "courbe +15%. A la VENTE : Taux_min = le taux de la courbe pour cette maturite (meilleur "
+                   "prix raisonnable a esperer) ; Taux_max = rendement maximum de cession pour ne pas faire "
+                   "baisser le P&L cible (moins-value estimee via la duration — case vide si titre proche de "
+                   "l'echeance, sans contrainte utile).")
 
         # Arrondi d'affichage des montants en DA a la dizaine de millions la plus proche (les valeurs
         # exactes restent utilisees pour le budget/QP — seul l'affichage est arrondi).
@@ -1392,13 +1392,12 @@ if st.session_state.data is not None:
         ventes = d["mouvements"][d["mouvements"]["Ecart"] < 0].copy().sort_values("Mouvement_DA")
         achats = d["mouvements"][d["mouvements"]["Ecart"] > 0].copy().sort_values("Mouvement_DA", ascending=False)
 
-        # --- Intervalle de taux d'execution [Taux_min, Taux_max] : le rendement a respecter pour ne
-        # pas degrader le rendement/P&L cible du portefeuille. Le coussin (ecart entre rendement
-        # cible actuel et objectif) est reparti au prorata du volume total des operations a executer.
+        # --- Intervalle de taux d'execution : le rendement a respecter pour ne pas degrader le
+        # rendement/P&L cible du portefeuille. Le coussin (ecart entre rendement cible actuel et
+        # objectif) est reparti au prorata du volume total des operations a executer.
         # - ACHAT : Taux_min = plancher = le plus eleve entre ce qu'exige le rendement cible et le
         #   taux de la courbe des taux pour la maturite residuelle (jamais moins cher que le marche) ;
-        #   Taux_max = ce taux de courbe + 10% (borne basse de la fourchette demandee), et
-        #   Taux_max_15 = ce taux de courbe + 15% (borne haute) pour voir toute la fourchette +10 a 15%.
+        #   Meilleur_taux = ce taux de courbe + 15%.
         # - VENTE : Taux_min = le taux de la courbe pour cette maturite (meilleur prix raisonnable a
         #   esperer) ; Taux_max = plafond = rendement maximum de cession (au-dela, la moins-value
         #   realisee, approximee par duration x ecart de taux, entame le coussin de P&L) — pas de
@@ -1410,11 +1409,10 @@ if st.session_state.data is not None:
         _ajustement_taux = (_coussin_DA / _volume_total_ops) if _volume_total_ops > 1e-6 else 0.0
         achats["Taux_courbe"] = achats["Delai_annees"].apply(lambda a: _rendement_depuis_courbe(a, courbe_manuelle))
         achats["Taux_min"] = np.maximum(achats["Rendement_net"] - _ajustement_taux, achats["Taux_courbe"])
-        # np.maximum avec Taux_min : si le coussin P&L pousse le plancher au-dela de +10%/+15%
-        # (portefeuille tres loin de l'objectif), le plafond suit pour ne jamais afficher un
-        # intervalle invalide (min > max) — le plancher reste prioritaire dans tous les cas.
-        achats["Taux_max"] = np.maximum(achats["Taux_courbe"] * 1.10, achats["Taux_min"])
-        achats["Taux_max_15"] = np.maximum(achats["Taux_courbe"] * 1.15, achats["Taux_max"])
+        # np.maximum avec Taux_min : si le coussin P&L pousse le plancher au-dela de +15% (portefeuille
+        # tres loin de l'objectif), Meilleur_taux suit pour ne jamais afficher un intervalle invalide
+        # (min > max) — le plancher reste prioritaire dans tous les cas.
+        achats["Meilleur_taux"] = np.maximum(achats["Taux_courbe"] * 1.15, achats["Taux_min"])
         _duree_min = 0.05
         ventes["Taux_courbe"] = ventes["Delai_annees"].apply(lambda a: _rendement_depuis_courbe(a, courbe_manuelle))
         ventes["Taux_min"] = ventes["Taux_courbe"]
@@ -1465,7 +1463,7 @@ if st.session_state.data is not None:
         for _, row in achats.iterrows():
             achats_restants.append({"Sens": "ACHAT", "ID": row["ID"], "Type": row["Type"], "Contrepartie": row["Contrepartie"],
                                     "Echeance": row["Echeance"], "Rendement_net": row["Rendement_net"],
-                                    "Taux_min": row["Taux_min"], "Taux_max": row["Taux_max"], "Taux_max_15": row["Taux_max_15"],
+                                    "Taux_min": row["Taux_min"], "Meilleur_taux": row["Meilleur_taux"],
                                     "Montant (DA)": row["Mouvement_DA"], "Agent": AGENTS.get(row["Type"].split()[0], ""),
                                     "_abs": abs(row["Mouvement_DA"])})
         ventes_restantes.sort(key=lambda o: o["_abs"], reverse=True)
@@ -1530,16 +1528,14 @@ if st.session_state.data is not None:
                 ligne_jour = {k: v for k, v in op_du_jour.items() if k not in ("_abs", "Date")}
                 ligne_jour["Montant (DA)"] = _arrondi_10m(ligne_jour["Montant (DA)"])
                 st.dataframe(pd.DataFrame([ligne_jour]).style.format({"Rendement_net": "{:.2%}", "Taux_min": "{:.2%}",
-                                                                       "Taux_max": "{:.2%}", "Taux_max_15": "{:.2%}",
+                                                                       "Taux_max": "{:.2%}", "Meilleur_taux": "{:.2%}",
                                                                        "Montant (DA)": "{:,.0f} DA"}, na_rep=""),
                             use_container_width=True, height=76)
-                _val_min, _val_max = ligne_jour.get("Taux_min"), ligne_jour.get("Taux_max")
-                _valides = [v for v in (_val_min, _val_max) if v is not None and not (isinstance(v, float) and np.isnan(v))]
+                _val_min = ligne_jour.get("Taux_min")
+                _val_plafond = ligne_jour.get("Taux_max") if op_du_jour["Sens"] == "VENTE" else ligne_jour.get("Meilleur_taux")
+                _valides = [v for v in (_val_min, _val_plafond) if v is not None and not (isinstance(v, float) and np.isnan(v))]
                 if len(_valides) == 2:
-                    st.caption(f"Intervalle de taux propose pour tenir le rendement/P&L cible : {_val_min:.2%} a {_val_max:.2%}")
-                _val_max15 = ligne_jour.get("Taux_max_15")
-                if op_du_jour["Sens"] == "ACHAT" and _val_max15 is not None and not (isinstance(_val_max15, float) and np.isnan(_val_max15)):
-                    st.caption(f"Fourchette +10 a 15% vs courbe des taux : {_val_max:.2%} a {_val_max15:.2%}")
+                    st.caption(f"Intervalle de taux propose pour tenir le rendement/P&L cible : {_val_min:.2%} a {_val_plafond:.2%}")
             else:
                 if DATE_EVAL.dayofweek in (4, 5):
                     st.markdown(badge("Jour non ouvre — aucune operation programmee", "ok"), unsafe_allow_html=True)
@@ -1585,7 +1581,7 @@ if st.session_state.data is not None:
                 _semaine_detail(op_s["Date"])["titres"].append({
                     "Date": op_s["Date"], "Sens": op_s["Sens"], "ID": op_s["ID"], "Type": op_s["Type"],
                     "Contrepartie": op_s["Contrepartie"], "Montant (DA)": op_s["Montant (DA)"],
-                    "Taux_min": op_s["Taux_min"], "Taux_max": op_s["Taux_max"], "Taux_max_15": op_s.get("Taux_max_15"),
+                    "Taux_min": op_s["Taux_min"], "Taux_max": op_s.get("Taux_max"), "Meilleur_taux": op_s.get("Meilleur_taux"),
                     "Agent": op_s["Agent"]})
 
             for opmm in mm_ops_liq:
@@ -1643,7 +1639,7 @@ if st.session_state.data is not None:
                     df_t = pd.DataFrame(detail["titres"]).sort_values("Date")
                     df_t["Date"] = df_t["Date"].dt.strftime("%d/%m/%Y")
                     df_t["Montant (DA)"] = df_t["Montant (DA)"].apply(_arrondi_10m)
-                    st.dataframe(df_t.style.format({"Montant (DA)": "{:,.0f} DA", "Taux_min": "{:.2%}", "Taux_max": "{:.2%}", "Taux_max_15": "{:.2%}"}, na_rep=""), use_container_width=True,
+                    st.dataframe(df_t.style.format({"Montant (DA)": "{:,.0f} DA", "Taux_min": "{:.2%}", "Taux_max": "{:.2%}", "Meilleur_taux": "{:.2%}"}, na_rep=""), use_container_width=True,
                                 hide_index=True, height=min(38 * (len(df_t) + 1) + 3, 300))
 
                 if detail["mm"]:
@@ -1688,8 +1684,8 @@ if st.session_state.data is not None:
                 df_plan_aff = df_plan.copy()
                 df_plan_aff["Date"] = df_plan_aff["Date"].dt.strftime("%d/%m/%Y")
                 df_plan_aff["Montant (DA)"] = df_plan_aff["Montant (DA)"].apply(_arrondi_10m)
-                st.dataframe(df_plan_aff[["Date", "Mois", "Sens", "ID", "Type", "Contrepartie", "Montant (DA)", "Taux_min", "Taux_max", "Taux_max_15", "Agent"]]
-                             .style.format({"Montant (DA)": "{:,.0f} DA", "Taux_min": "{:.2%}", "Taux_max": "{:.2%}", "Taux_max_15": "{:.2%}"}, na_rep=""),
+                st.dataframe(df_plan_aff[["Date", "Mois", "Sens", "ID", "Type", "Contrepartie", "Montant (DA)", "Taux_min", "Taux_max", "Meilleur_taux", "Agent"]]
+                             .style.format({"Montant (DA)": "{:,.0f} DA", "Taux_min": "{:.2%}", "Taux_max": "{:.2%}", "Meilleur_taux": "{:.2%}"}, na_rep=""),
                             use_container_width=True, height=min(38 * (len(df_plan_aff) + 1) + 3, 500))
             else:
                 st.caption("Aucune operation planifiable.")
