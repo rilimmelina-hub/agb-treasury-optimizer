@@ -1410,8 +1410,11 @@ if st.session_state.data is not None:
         _ajustement_taux = (_coussin_DA / _volume_total_ops) if _volume_total_ops > 1e-6 else 0.0
         achats["Taux_courbe"] = achats["Delai_annees"].apply(lambda a: _rendement_depuis_courbe(a, courbe_manuelle))
         achats["Taux_min"] = np.maximum(achats["Rendement_net"] - _ajustement_taux, achats["Taux_courbe"])
-        achats["Taux_max"] = achats["Taux_courbe"] * 1.10
-        achats["Taux_max_15"] = achats["Taux_courbe"] * 1.15
+        # np.maximum avec Taux_min : si le coussin P&L pousse le plancher au-dela de +10%/+15%
+        # (portefeuille tres loin de l'objectif), le plafond suit pour ne jamais afficher un
+        # intervalle invalide (min > max) — le plancher reste prioritaire dans tous les cas.
+        achats["Taux_max"] = np.maximum(achats["Taux_courbe"] * 1.10, achats["Taux_min"])
+        achats["Taux_max_15"] = np.maximum(achats["Taux_courbe"] * 1.15, achats["Taux_max"])
         _duree_min = 0.05
         ventes["Taux_courbe"] = ventes["Delai_annees"].apply(lambda a: _rendement_depuis_courbe(a, courbe_manuelle))
         ventes["Taux_min"] = ventes["Taux_courbe"]
